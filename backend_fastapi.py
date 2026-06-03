@@ -220,9 +220,11 @@ def practice(body: PracticeBody, request: Request):
     consume_or_raise(request)
     query = " ".join([*body.weakPoints, body.profile.get("goal", "")])
     fallback = fallback_practice(body)
-    data = call_llm_json(
-        {
+    data = fallback | {"source": "fallback"}
+    for attempt in range(2):
+        payload = {
             "task": "practice",
+            "nonce": f"{int(time.time() * 1000)}-{attempt}",
             "profile": body.profile,
             "goal": body.goal,
             "weakPoints": body.weakPoints,
@@ -235,9 +237,11 @@ def practice(body: PracticeBody, request: Request):
             ],
             "retrievedChunks": retrieve(query, body.source, limit=3),
             "output_schema": {"question": {"skill": "string", "question": "string", "answer": "string", "options": ["string"]}},
-        },
-        fallback,
-    )
+        }
+        data = call_llm_json(payload, fallback)
+        candidate = (data.get("question") or data).get("question", "")
+        if not is_duplicate_question(candidate, body.previousQuestions):
+            break
     return data | {"remaining": remaining_for(request), "model": active_model()}
 
 
@@ -455,6 +459,17 @@ def parse_json(text: str) -> dict[str, Any]:
         if not match:
             return {}
         return json.loads(match.group(0))
+
+
+def normalize_question(text: str) -> str:
+    return re.sub(r"[\s，。？！,.?!：“”\"']", "", str(text or "")).lower()
+
+
+def is_duplicate_question(question: str, previous: list[str]) -> bool:
+    current = normalize_question(question)
+    if not current:
+        return False
+    return any(current == normalize_question(item) for item in previous)
 
 
 def fallback_diagnosis(profile: dict[str, Any], source: dict[str, Any] | None, graph: dict[str, Any] | None) -> dict[str, Any]:

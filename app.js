@@ -309,6 +309,11 @@ async function drawPracticeQuestion() {
     });
     const candidate = data.question || data;
     if (!state.seenQuestions.has(normalizeText(candidate.question))) break;
+    data = {
+      question: makeLocalVariantQuestion(candidate, attempt),
+      source: "local-variant",
+    };
+    break;
   }
 
   renderPracticeQuestion(data.question || data);
@@ -558,7 +563,30 @@ function rememberQuestion(question) {
 }
 
 function normalizeText(value) {
-  return String(value || "").replace(/\s+/g, "").replace(/[，。？！,.?!]/g, "").toLowerCase();
+  return String(value || "")
+    .replace(/\s+/g, "")
+    .replace(/[，。？！,.?!：“”"']/g, "")
+    .replace(/^[A-Da-d][.、]/g, "")
+    .toLowerCase();
+}
+
+function makeLocalVariantQuestion(question, attempt) {
+  const skill = question?.skill || state.weakPoints.at(-1) || "当前薄弱点";
+  const variants = [
+    {
+      skill,
+      question: `换一种问法：关于「${skill}」，如果你要给别人讲清楚它，第一步最应该说明什么？`,
+      answer: "它和前后知识点的关系",
+      options: ["它和前后知识点的关系", "它的名字是否好记", "直接背答案", "跳过例题"],
+    },
+    {
+      skill,
+      question: `应用检查：遇到一道关于「${skill}」的题时，最稳妥的处理顺序是什么？`,
+      answer: "先找条件和目标，再选择方法",
+      options: ["先找条件和目标，再选择方法", "先看答案再反推", "直接猜一个选项", "只圈关键词"],
+    },
+  ];
+  return variants[attempt % variants.length];
 }
 
 function resolveAnswer(answer, options) {
