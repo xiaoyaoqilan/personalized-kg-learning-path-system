@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>自学路径规划</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#start" aria-label="回到开始">
+          <span>知</span>
+          <strong>自学路径规划</strong>
+        </a>
+        <nav id="nav" class="steps" aria-label="学习流程"></nav>
+        <div id="apiBadge" class="quota">今日可用</div>
+      </header>
+
+      <section class="workspace">
+        <section class="view view-start" data-view="start">
+          <div class="conversation">
+            <p class="kicker">先说你的目标</p>
+            <h1>你想学什么？想怎么学？</h1>
+            <p class="lead">系统会先了解目标、基础和偏好，再生成诊断题、学习路线和后续练习。整个过程按步骤推进，适合现场演示。</p>
+          </div>
+
+          <form class="intake" onsubmit="return false">
+            <label class="field wide">
+              <span>我想学习</span>
+              <textarea id="goalInput" maxlength="180" placeholder="写下你要学习的内容，越具体越好"></textarea>
+            </label>
+            <label class="field">
+              <span>年级 / 阶段</span>
+              <input id="gradeInput" maxlength="24" placeholder="例如：大四、考研、自学入门" />
+            </label>
+            <label class="field">
+              <span>所属学科</span>
+              <input id="subjectInput" maxlength="36" placeholder="例如：计算机、数学、英语" />
+            </label>
+            <label class="field">
+              <span>现在卡在哪里</span>
+              <input id="problemInput" maxlength="100" placeholder="例如：概念懂但不会做题" />
+            </label>
+            <label class="field">
+              <span>更喜欢的学习方式</span>
+              <input id="preferenceInput" maxlength="80" placeholder="例如：多练题、先看例子、慢一点" />
+            </label>
+          </form>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>选择学习偏好</h2>
+              <p>可多选，系统会据此调整提问和路线。</p>
+            </div>
+            <div id="styleChoices" class="choice-grid"></div>
+          </section>
+
+          <div class="actions">
+            <button id="toLibraryBtn" class="primary">开始规划</button>
+          </div>
+        </section>
+
+        <section class="view hidden" data-view="library">
+          <div class="page-head">
+            <p class="kicker">补充材料</p>
+            <h1>放入一段你正在学的内容</h1>
+            <p class="lead">可以是课本段落、笔记、题目说明或课程大纲。没有材料也能继续，但放入材料后，后续提问会更贴近你的内容。</p>
+          </div>
+
+          <div class="library-layout">
+            <div class="material-box">
+              <label class="field">
+                <span>材料名称</span>
+                <input id="sourceTitleInput" maxlength="60" placeholder="给这份材料起个名字" />
+              </label>
+              <label class="field wide">
+                <span>学习材料</span>
+                <textarea id="sourceTextInput" class="source-text" placeholder="粘贴材料内容"></textarea>
+              </label>
+              <div class="actions">
+                <button id="indexBtn">整理材料</button>
+                <button id="analyzeBtn" class="primary">进入分析</button>
+              </div>
+            </div>
+
+            <aside class="side-panel">
+              <h2>系统会做什么</h2>
+              <ul>
+                <li>提取关键概念</li>
+                <li>建立概念之间的关系</li>
+                <li>检索与你目标相关的片段</li>
+                <li>为诊断题提供依据</li>
+              </ul>
+              <div id="indexResult" class="result-strip"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view hidden" data-view="analysis">
+          <div class="page-head">
+            <p class="kicker">学习画像</p>
+            <h1>先判断问题，再开始出题</h1>
+            <p class="lead">这里会慢慢展示系统的判断过程，适合答辩时说明“为什么给这个学生出这些题”。</p>
+          </div>
+          <div id="analysisSteps" class="demo-flow"></div>
+          <div id="analysisSummary" class="summary-grid"></div>
+          <div class="actions">
+            <button id="startQuizBtn" class="primary">开始诊断</button>
+          </div>
+        </section>
+
+        <section class="view hidden" data-view="quiz">
+          <div class="page-head row">
+            <div>
+              <p class="kicker">基础诊断</p>
+              <h1>回答几道题</h1>
+              <p class="lead">题目会围绕你的目标和材料生成，用来判断薄弱点。</p>
+            </div>
+            <span id="quizProgress" class="pill">0 / 3</span>
+          </div>
+          <div id="quizArea" class="question-area"></div>
+        </section>
+
+        <section class="view hidden" data-view="plan">
+          <div class="page-head">
+            <p class="kicker">自适应路线</p>
+            <h1>现在最适合你的学习顺序</h1>
+            <p class="lead">路线会根据目标、材料和答题结果生成，并把复习与练习放进同一条路径。</p>
+          </div>
+          <div id="profileSummary" class="summary-grid"></div>
+          <ol id="learningPath" class="path-list"></ol>
+          <div class="actions">
+            <button id="practiceBtn" class="primary">继续练习</button>
+            <button id="askBtn">问一个问题</button>
+          </div>
+        </section>
+
+        <section class="view hidden" data-view="practice">
+          <div class="page-head">
+            <p class="kicker">持续练习</p>
+            <h1>围绕薄弱点继续抽题</h1>
+            <p class="lead">每次答题后，系统会继续记录问题点，后续练习会越来越贴近当前状态。</p>
+          </div>
+          <div id="practiceQuestion" class="question-area"></div>
+          <div id="weaknessLog" class="weakness-log"></div>
+          <div class="actions">
+            <button id="drawQuestionBtn" class="primary">再来一题</button>
+          </div>
+        </section>
+
+        <section class="view hidden" data-view="assistant">
+          <div class="page-head">
+            <p class="kicker">学习助教</p>
+            <h1>问一个和当前目标有关的问题</h1>
+            <p class="lead">回答会结合你的学习目标、材料片段和已经记录的薄弱点。</p>
+          </div>
+          <div class="assistant-box">
+            <textarea id="askInput" placeholder="例如：为什么这个概念我总是会用错？"></textarea>
+            <button id="ragBtn" class="primary">提交问题</button>
+          </div>
+          <div id="ragResult" class="rag-result"></div>
+          <div id="graphBox" class="graph-box"></div>
+        </section>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
