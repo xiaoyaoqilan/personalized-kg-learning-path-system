@@ -234,9 +234,13 @@ def practice(body: PracticeBody, request: Request):
                 "不要重复 previousQuestions 中已经出现过的题目。",
                 "answer 必须与 options 中某一个完整选项文本完全一致，不能只写 A/B/C/D。",
                 "题目要围绕 weakPoints 中的薄弱点变化问法。",
+                "reason 用一句话说明为什么当前用户需要做这道题。",
             ],
             "retrievedChunks": retrieve(query, body.source, limit=3),
-            "output_schema": {"question": {"skill": "string", "question": "string", "answer": "string", "options": ["string"]}},
+            "output_schema": {
+                "reason": "string",
+                "question": {"skill": "string", "question": "string", "answer": "string", "options": ["string"]},
+            },
         }
         data = call_llm_json(payload, fallback)
         candidate = (data.get("question") or data).get("question", "")
@@ -508,6 +512,7 @@ def fallback_plan(body: PlanBody) -> dict[str, Any]:
 def fallback_practice(body: PracticeBody) -> dict[str, Any]:
     skill = (body.weakPoints or [body.source.get("title") if body.source else "知识脉络"])[-1]
     return {
+        "reason": f"系统记录到「{skill}」仍需要巩固，所以继续用变式题检查。",
         "question": {
             "skill": skill,
             "question": f"关于「{skill}」，下面哪种做法最能帮助你真正掌握？",

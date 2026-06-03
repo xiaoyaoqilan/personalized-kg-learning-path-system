@@ -30,6 +30,7 @@ const state = {
   currentQuestion: 0,
   weakPoints: [],
   seenQuestions: new Set(),
+  practiceMeta: null,
   plan: null,
   sessionId: null,
 };
@@ -60,6 +61,7 @@ function bindEvents() {
   $("#startQuizBtn").addEventListener("click", () => go("quiz"));
   $("#practiceBtn").addEventListener("click", () => {
     go("practice");
+    renderLearnerState();
     drawPracticeQuestion();
   });
   $("#drawQuestionBtn").addEventListener("click", drawPracticeQuestion);
@@ -296,6 +298,8 @@ async function buildPlan() {
 }
 
 async function drawPracticeQuestion() {
+  renderLearnerState();
+  $("#practiceReason").innerHTML = "";
   $("#practiceQuestion").innerHTML = loading("正在抽取下一题");
   let data = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -316,6 +320,8 @@ async function drawPracticeQuestion() {
     break;
   }
 
+  state.practiceMeta = data;
+  renderPracticeReason(data, data.question || data);
   renderPracticeQuestion(data.question || data);
   updateBadge(data);
 }
@@ -346,11 +352,70 @@ function renderPracticeQuestion(question) {
         state.weakPoints.push(item.skill);
       }
       state.answers.push({ skill: item.skill, correct, selected, answer: item.answer });
+      renderAnswerFeedback(item, correct, selected);
       updateWeaknessLog();
       renderKnowledgeMap("#knowledgeMap");
+      renderLearnerState();
       saveRecord("练习中");
     });
   });
+}
+
+function renderLearnerState() {
+  const el = $("#learnerStatePanel");
+  if (!el) return;
+  const latest = state.answers.at(-1);
+  const weak = unique(state.weakPoints);
+  const correctCount = state.answers.filter((item) => item.correct).length;
+  const total = state.answers.length;
+  el.innerHTML = `
+    <div class="state-card main">
+      <span>当前目标</span>
+      <strong>${escapeHtml(state.profile.goal || state.goal?.goalTitle || "还没有填写目标")}</strong>
+      <p>${escapeHtml(state.goal?.problemGuess || state.profile.problem || "系统会根据你的答题记录判断问题点。")}</p>
+    </div>
+    <div class="state-card">
+      <span>已练习</span>
+      <strong>${total ? `${correctCount} / ${total}` : "等待开始"}</strong>
+      <p>${latest ? `最近一题：${latest.correct ? "答对" : "答错"}「${latest.skill}」` : "完成题目后这里会更新。"}</p>
+    </div>
+    <div class="state-card">
+      <span>优先问题点</span>
+      <strong>${weak.length ? escapeHtml(weak.slice(-3).join("、")) : "待诊断"}</strong>
+      <p>${weak.length ? "下一题会优先围绕这些节点变化问法。" : "先完成诊断题，系统会记录薄弱节点。"}</p>
+    </div>
+  `;
+}
+
+function renderPracticeReason(data, question) {
+  const reason = data.reason || data.focusReason || data.explanation || defaultPracticeReason(question);
+  $("#practiceReason").innerHTML = `
+    <article>
+      <span>为什么抽这题</span>
+      <strong>${escapeHtml(question.skill || "当前问题点")}</strong>
+      <p>${escapeHtml(reason)}</p>
+    </article>
+  `;
+}
+
+function defaultPracticeReason(question) {
+  const weak = unique(state.weakPoints);
+  if (weak.includes(question.skill)) return `你在「${question.skill}」相关题目上出现过错误，所以系统继续换一种问法确认是否真正掌握。`;
+  if (weak.length) return `系统正在围绕你的薄弱点「${weak.slice(-2).join("、")}」继续抽题，并观察是否能迁移到相近概念。`;
+  return "这是根据当前学习目标生成的基础检查题，用来继续更新你的学习画像。";
+}
+
+function renderAnswerFeedback(question, correct, selected) {
+  const message = correct
+    ? `答对了。系统会把「${question.skill}」暂时标记为较稳定，但后续还会用变式题确认。`
+    : `这题暴露了「${question.skill}」还不稳定。你选的是「${selected}」，正确答案是「${question.answer}」。`;
+  $("#practiceReason").innerHTML += `
+    <article class="answer-feedback ${correct ? "ok" : "warn"}">
+      <span>本题反馈</span>
+      <strong>${correct ? "掌握度上升" : "记录为问题点"}</strong>
+      <p>${escapeHtml(message)}</p>
+    </article>
+  `;
 }
 
 async function askAssistant() {

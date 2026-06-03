@@ -553,6 +553,65 @@ button:disabled {
   padding: 16px;
 }
 
+.learner-state {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.state-card,
+.practice-reason article {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.state-card.main {
+  background: #f8fbff;
+}
+
+.state-card span,
+.practice-reason span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.state-card strong,
+.practice-reason strong {
+  display: block;
+  line-height: 1.45;
+}
+
+.state-card p,
+.practice-reason p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.practice-reason {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.answer-feedback.ok {
+  border-color: #bce5c8;
+  background: #f3fbf5;
+}
+
+.answer-feedback.warn {
+  border-color: #ffd0c9;
+  background: #fff7f5;
+}
+
 .weakness-log h2,
 .graph-box h2 {
   width: 100%;
@@ -758,7 +817,8 @@ button:disabled {
 
   .summary-grid,
   .demo-flow,
-  .node-grid {
+  .node-grid,
+  .learner-state {
     grid-template-columns: 1fr;
   }
 }
