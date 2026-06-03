@@ -69,6 +69,7 @@ class PracticeBody(BaseModel):
     answers: list[dict[str, Any]] = Field(default_factory=list)
     weakPoints: list[str] = Field(default_factory=list)
     source: dict[str, Any] | None = None
+    previousQuestions: list[str] = Field(default_factory=list)
 
 
 class RagBody(BaseModel):
@@ -225,6 +226,13 @@ def practice(body: PracticeBody, request: Request):
             "profile": body.profile,
             "goal": body.goal,
             "weakPoints": body.weakPoints,
+            "answers": body.answers,
+            "previousQuestions": body.previousQuestions[-12:],
+            "constraints": [
+                "不要重复 previousQuestions 中已经出现过的题目。",
+                "answer 必须与 options 中某一个完整选项文本完全一致，不能只写 A/B/C/D。",
+                "题目要围绕 weakPoints 中的薄弱点变化问法。",
+            ],
             "retrievedChunks": retrieve(query, body.source, limit=3),
             "output_schema": {"question": {"skill": "string", "question": "string", "answer": "string", "options": ["string"]}},
         },
@@ -410,7 +418,9 @@ def call_openai_compatible_json(
                 "role": "system",
                 "content": (
                     "You are an adaptive self-learning planner. "
-                    "Return only valid JSON matching the requested output_schema."
+                    "Return only valid JSON matching the requested output_schema. "
+                    "If options are requested, the answer field must exactly equal one full option string. "
+                    "Avoid repeating any question listed in previousQuestions."
                 ),
             },
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},

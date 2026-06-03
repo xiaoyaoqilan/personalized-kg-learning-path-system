@@ -29,6 +29,7 @@ const state = {
   answers: [],
   currentQuestion: 0,
   weakPoints: [],
+  seenQuestions: new Set(),
   plan: null,
   sessionId: null,
 };
@@ -93,11 +94,9 @@ function go(view) {
 
 async function loadStatus() {
   try {
-    const data = await requestJson("/api/status");
-    const connected = data.chromaConnected ? "材料库已连接" : "材料库待连接";
-    $("#apiBadge").textContent = `${connected} · 今日 ${data.remaining ?? "--"} 次`;
+    await requestJson("/api/status");
   } catch {
-    $("#apiBadge").textContent = "服务检查中";
+    // The service badge is intentionally hidden from the learner-facing UI.
   }
 }
 
@@ -184,6 +183,7 @@ async function startAnalysis() {
   state.questions = sanitizeQuestions(data.questions);
   state.answers = [];
   state.weakPoints = [];
+  state.seenQuestions = new Set();
   state.currentQuestion = 0;
 
   $("#analysisSummary").innerHTML = `
@@ -191,6 +191,7 @@ async function startAnalysis() {
     <div><span>下一步</span><strong>先完成 ${state.questions.length} 道诊断题，再生成路线</strong></div>
     <div><span>材料状态</span><strong>${state.source ? `已整理 ${state.source.chunkCount} 段材料` : "未放入材料，使用目标进行判断"}</strong></div>
   `;
+  renderKnowledgeMap("#analysisKnowledgeMap");
 
   renderQuestion();
   saveRecord("已完成分析");
@@ -207,6 +208,7 @@ function appendAnalysisStep(title, desc) {
 
 function renderQuestion() {
   const question = state.questions[state.currentQuestion];
+  rememberQuestion(question.question);
   $("#quizProgress").textContent = `${state.currentQuestion + 1} / ${state.questions.length}`;
   $("#quizArea").innerHTML = `
     <article class="question-card">
@@ -227,7 +229,8 @@ function answerQuestion(button, question) {
   const buttons = [...button.closest(".option-grid").querySelectorAll("button")];
   buttons.forEach((item) => item.disabled = true);
 
-  const correct = button.textContent === question.answer;
+  const selected = button.textContent.trim();
+  const correct = selected === question.answer;
   button.classList.add(correct ? "correct" : "wrong");
   if (!correct) {
     const right = buttons.find((item) => item.textContent === question.answer);
@@ -237,7 +240,7 @@ function answerQuestion(button, question) {
   state.answers.push({
     skill: question.skill,
     correct,
-    selected: button.textContent,
+    selected,
     answer: question.answer,
   });
   if (!correct) state.weakPoints.push(question.skill);
@@ -268,11 +271,13 @@ async function buildPlan() {
   const correctCount = state.answers.filter((item) => item.correct).length;
   const weakSkills = Array.isArray(data.weakSkills) ? data.weakSkills : unique(state.weakPoints);
 
+  const displayScore = Number(data.score) > state.questions.length ? correctCount : (data.score ?? correctCount);
   $("#profileSummary").innerHTML = `
     <div><span>水平判断</span><strong>${escapeHtml(data.level || "需要继续观察")}</strong></div>
-    <div><span>诊断结果</span><strong>${data.score ?? correctCount} / ${state.questions.length}</strong></div>
+    <div><span>诊断结果</span><strong>${displayScore} / ${state.questions.length}</strong></div>
     <div><span>重点关注</span><strong>${weakSkills.length ? weakSkills.map(escapeHtml).join("、") : "暂未发现明显薄弱点"}</strong></div>
   `;
+  renderKnowledgeMap("#knowledgeMap");
 
   $("#learningPath").innerHTML = (data.path || []).map((item, index) => `
     <li>
@@ -292,13 +297,19 @@ async function buildPlan() {
 
 async function drawPracticeQuestion() {
   $("#practiceQuestion").innerHTML = loading("正在抽取下一题");
-  const data = await requestJson("/api/practice", {
-    profile: state.profile,
-    goal: state.goal,
-    answers: state.answers,
-    weakPoints: state.weakPoints,
-    source: state.source,
-  });
+  let data = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    data = await requestJson("/api/practice", {
+      profile: state.profile,
+      goal: state.goal,
+      answers: state.answers,
+      weakPoints: state.weakPoints,
+      source: state.source,
+      previousQuestions: [...state.seenQuestions],
+    });
+    const candidate = data.question || data;
+    if (!state.seenQuestions.has(normalizeText(candidate.question))) break;
+  }
 
   renderPracticeQuestion(data.question || data);
   updateBadge(data);
@@ -306,6 +317,7 @@ async function drawPracticeQuestion() {
 
 function renderPracticeQuestion(question) {
   const item = sanitizeQuestions([question])[0];
+  rememberQuestion(item.question);
   $("#practiceQuestion").innerHTML = `
     <article class="question-card">
       <p>${escapeHtml(item.skill)}</p>
@@ -320,15 +332,17 @@ function renderPracticeQuestion(question) {
     button.addEventListener("click", () => {
       const buttons = [...button.closest(".option-grid").querySelectorAll("button")];
       buttons.forEach((item) => item.disabled = true);
-      const correct = button.textContent === item.answer;
+      const selected = button.textContent.trim();
+      const correct = selected === item.answer;
       button.classList.add(correct ? "correct" : "wrong");
       if (!correct) {
         const right = buttons.find((option) => option.textContent === item.answer);
         right?.classList.add("correct");
         state.weakPoints.push(item.skill);
       }
-      state.answers.push({ skill: item.skill, correct, selected: button.textContent, answer: item.answer });
+      state.answers.push({ skill: item.skill, correct, selected, answer: item.answer });
       updateWeaknessLog();
+      renderKnowledgeMap("#knowledgeMap");
       saveRecord("练习中");
     });
   });
@@ -380,6 +394,50 @@ function updateWeaknessLog() {
   $("#weaknessLog").innerHTML = items.length
     ? `<h2>已记录的问题点</h2>${items.map(([name, count]) => `<span>${escapeHtml(name)} × ${count}</span>`).join("")}`
     : `<h2>已记录的问题点</h2><p>暂时没有明显薄弱点。</p>`;
+}
+
+function renderKnowledgeMap(selector) {
+  const el = $(selector);
+  if (!el) return;
+  const nodes = buildKnowledgeNodes();
+  if (!nodes.length) {
+    el.innerHTML = "";
+    return;
+  }
+  el.innerHTML = `
+    <div class="section-head">
+      <h2>个人知识节点</h2>
+      <p>根据材料、诊断题和答题记录自动更新。</p>
+    </div>
+    <div class="node-grid">
+      ${nodes.map((node) => `
+        <article class="knowledge-node ${node.level}">
+          <span>${escapeHtml(node.status)}</span>
+          <strong>${escapeHtml(node.name)}</strong>
+          <p>${escapeHtml(node.reason)}</p>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function buildKnowledgeNodes() {
+  const graphNodes = state.graph?.nodes || [];
+  const questionNodes = state.questions.map((item) => item.skill);
+  const weakSet = new Set(state.weakPoints);
+  const correctSet = new Set(state.answers.filter((item) => item.correct).map((item) => item.skill));
+  return unique([...graphNodes, ...questionNodes, ...state.weakPoints])
+    .filter(Boolean)
+    .slice(0, 12)
+    .map((name) => {
+      if (weakSet.has(name)) {
+        return { name, status: "需巩固", level: "weak", reason: "诊断或练习中出现错误，后续优先抽题。" };
+      }
+      if (correctSet.has(name)) {
+        return { name, status: "较稳定", level: "stable", reason: "已在题目中答对，可继续迁移应用。" };
+      }
+      return { name, status: "待确认", level: "pending", reason: "已进入个人知识图谱，等待诊断验证。" };
+    });
 }
 
 function saveRecord(status) {
@@ -443,15 +501,24 @@ function sanitizeQuestions(questions) {
     },
   ];
 
-  return (list.length ? list : fallback).slice(0, 3).map((item, index) => {
+  const source = [];
+  for (const item of (list.length ? list : fallback)) {
+    if (!item?.question) continue;
+    if (source.some((known) => normalizeText(known.question) === normalizeText(item.question))) continue;
+    source.push(item);
+  }
+  while (source.length < 3) source.push(fallback[source.length % fallback.length]);
+
+  return source.slice(0, 3).map((item, index) => {
     const options = Array.isArray(item.options) ? item.options.slice(0, 4) : [];
-    if (item.answer && !options.includes(item.answer)) options.unshift(item.answer);
     while (options.length < 4) options.push(`选项 ${options.length + 1}`);
+    const cleanedOptions = options.slice(0, 4).map((option) => String(option).trim());
+    const answer = resolveAnswer(item.answer, cleanedOptions);
     return {
       skill: item.skill || `问题点 ${index + 1}`,
       question: item.question || fallback[index]?.question || "下面哪一项更合适？",
-      answer: item.answer || options[0],
-      options: shuffle(options.slice(0, 4)),
+      answer,
+      options: shuffle(cleanedOptions),
     };
   });
 }
@@ -461,7 +528,7 @@ function loading(text) {
 }
 
 function updateBadge(data) {
-  if (data && "remaining" in data) $("#apiBadge").textContent = `材料库已连接 · 今日 ${data.remaining} 次`;
+  // Hidden from the learner-facing UI.
 }
 
 function shake(selector) {
@@ -483,6 +550,28 @@ async function requestJson(url, body) {
 
 function unique(items) {
   return [...new Set(items.filter(Boolean))];
+}
+
+function rememberQuestion(question) {
+  const key = normalizeText(question);
+  if (key) state.seenQuestions.add(key);
+}
+
+function normalizeText(value) {
+  return String(value || "").replace(/\s+/g, "").replace(/[，。？！,.?!]/g, "").toLowerCase();
+}
+
+function resolveAnswer(answer, options) {
+  const raw = String(answer || "").trim();
+  if (options.includes(raw)) return raw;
+  const letter = raw.match(/^[A-Da-d]/)?.[0]?.toUpperCase();
+  if (letter) {
+    const index = "ABCD".indexOf(letter);
+    if (options[index]) return options[index];
+    const prefixed = options.find((option) => option.trim().toUpperCase().startsWith(`${letter}.`) || option.trim().toUpperCase().startsWith(`${letter}、`));
+    if (prefixed) return prefixed;
+  }
+  return options[0];
 }
 
 function shuffle(items) {

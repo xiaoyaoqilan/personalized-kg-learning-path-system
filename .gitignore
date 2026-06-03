@@ -15,5 +15,8 @@ shots/
 *.log
 *.sqlite3
 *.db
+neo4j-community-*/
+neo4j-community-*.zip
+neo4j-community-*.tar.gz
 .DS_Store
 Thumbs.db
